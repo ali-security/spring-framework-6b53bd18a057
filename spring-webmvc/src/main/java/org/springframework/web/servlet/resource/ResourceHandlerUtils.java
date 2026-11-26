@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -28,6 +29,7 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
 import org.springframework.core.log.LogFormatUtils;
+import org.springframework.lang.Nullable;
 import org.springframework.util.ResourceUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.context.support.ServletContextResource;
@@ -43,6 +45,16 @@ public abstract class ResourceHandlerUtils {
 
 	private static final Log logger = LogFactory.getLog(ResourceHandlerUtils.class);
 
+
+	public static void assertResourceLocation(@Nullable Resource location) {
+		if (location instanceof ClassPathResource classPathResource) {
+			String path = classPathResource.getPath();
+			if (path.isEmpty() || "/".equals(path)) {
+				logger.warn("Resource location '" + location + "' is considered unsafe " +
+						"and should not be used as it provides access to the entire classpath.");
+			}
+		}
+	}
 
 	/**
 	 * Normalize the given resource path replacing the following:
@@ -124,7 +136,8 @@ public abstract class ResourceHandlerUtils {
 	 * @return {@code true} if the path is invalid, {@code false} otherwise
 	 */
 	public static boolean isInvalidPath(String path) {
-		if (path.contains("WEB-INF") || path.contains("META-INF")) {
+		String pathLowerCase = path.toLowerCase(Locale.ROOT);
+		if (pathLowerCase.contains("web-inf") || pathLowerCase.contains("meta-inf")) {
 			if (logger.isWarnEnabled()) {
 				logger.warn(LogFormatUtils.formatValue(
 						"Path with \"WEB-INF\" or \"META-INF\": [" + path + "]", -1, true));

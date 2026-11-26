@@ -22,12 +22,17 @@ import java.util.Optional;
 import java.util.function.Function;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.web.servlet.handler.PathPatternsTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
 
 /**
  * @author Arjen Poutsma
@@ -65,6 +70,29 @@ class PathResourceLookupFunctionTests {
 		ClassPathResource location = new ClassPathResource("org/springframework/web/reactive/function/server/");
 		PathResourceLookupFunction function = new PathResourceLookupFunction("/resources/**", location);
 		ServerRequest request = initRequest("GET", "/resources/foo.txt");
+
+		Optional<Resource> result = function.apply(request);
+		assertThat(result).isNotPresent();
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {
+			"WEB-INF/web.xml",
+			"web-inf/web.xml",
+			"Web-Inf/web.xml",
+			"META-INF/MANIFEST.MF",
+			"meta-inf/manifest.mf",
+			"Meta-Inf/MANIFEST.MF",
+			"%77eb-inf/web.xml",
+			"%6Deta-inf/manifest.mf"
+	})
+	void protectedDirectoryIsRejectedInAnyCase(String path) throws Exception {
+		// Use mock location: i.e. we're only testing upfront validations...
+		Resource location = mock();
+		given(location.createRelative(any())).willThrow(new AssertionError("Resource should not be resolved"));
+
+		PathResourceLookupFunction function = new PathResourceLookupFunction("/resources/**", location);
+		ServerRequest request = initRequest("GET", "/resources/" + path);
 
 		Optional<Resource> result = function.apply(request);
 		assertThat(result).isNotPresent();

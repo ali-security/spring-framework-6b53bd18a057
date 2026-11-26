@@ -18,17 +18,25 @@ package org.springframework.web.reactive.function.server;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.URI;
 import java.util.Collections;
 import java.util.function.Function;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
+import org.springframework.http.HttpMethod;
 import org.springframework.web.testfixture.http.server.reactive.MockServerHttpRequest;
 import org.springframework.web.testfixture.server.MockServerWebExchange;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
 
 /**
  * @author Arjen Poutsma
@@ -88,6 +96,32 @@ class PathResourceLookupFunctionTests {
 
 		PathResourceLookupFunction function = new PathResourceLookupFunction("/resources/**", location);
 		MockServerHttpRequest mockRequest = MockServerHttpRequest.get("https://example.com").build();
+		ServerRequest request = new DefaultServerRequest(MockServerWebExchange.from(mockRequest), Collections.emptyList());
+		Mono<Resource> result = function.apply(request);
+		StepVerifier.create(result)
+				.expectComplete()
+				.verify();
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {
+			"WEB-INF/web.xml",
+			"web-inf/web.xml",
+			"Web-Inf/web.xml",
+			"META-INF/MANIFEST.MF",
+			"meta-inf/manifest.mf",
+			"Meta-Inf/MANIFEST.MF",
+			"%77eb-inf/web.xml",
+			"%6Deta-inf/manifest.mf"
+	})
+	void protectedDirectoryIsRejectedInAnyCase(String path) throws Exception {
+		// Use mock location: i.e. we're only testing upfront validations...
+		Resource location = mock();
+		given(location.createRelative(any())).willThrow(new AssertionError("Resource should not be resolved"));
+
+		PathResourceLookupFunction function = new PathResourceLookupFunction("/resources/**", location);
+		MockServerHttpRequest mockRequest = MockServerHttpRequest.method(
+				HttpMethod.GET, URI.create("https://localhost/resources/" + path)).build();
 		ServerRequest request = new DefaultServerRequest(MockServerWebExchange.from(mockRequest), Collections.emptyList());
 		Mono<Resource> result = function.apply(request);
 		StepVerifier.create(result)

@@ -383,6 +383,10 @@ public class ResourceWebHandler implements WebHandler, InitializingBean {
 			}
 		}
 
+		for (Resource location : result) {
+			ResourceHandlerUtils.assertResourceLocation(location);
+		}
+
 		if (isOptimizeLocations()) {
 			result = result.stream().filter(Resource::exists).toList();
 		}
@@ -630,7 +634,8 @@ public class ResourceWebHandler implements WebHandler, InitializingBean {
 	 * @return {@code true} if the path is invalid, {@code false} otherwise
 	 */
 	protected boolean isInvalidPath(String path) {
-		if (path.contains("WEB-INF") || path.contains("META-INF")) {
+		String pathLowerCase = path.toLowerCase(Locale.ROOT);
+		if (pathLowerCase.contains("web-inf") || pathLowerCase.contains("meta-inf")) {
 			if (logger.isWarnEnabled()) {
 				logger.warn(LogFormatUtils.formatValue(
 						"Path with \"WEB-INF\" or \"META-INF\": [" + path + "]", -1, true));

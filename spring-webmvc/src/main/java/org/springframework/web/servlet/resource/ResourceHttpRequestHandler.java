@@ -515,6 +515,10 @@ public class ResourceHttpRequestHandler extends WebContentGenerator
 		}
 
 		result.addAll(this.locationResources);
+		for (Resource location : result) {
+			ResourceHandlerUtils.assertResourceLocation(location);
+		}
+
 		if (isOptimizeLocations()) {
 			result = result.stream().filter(Resource::exists).toList();
 		}
@@ -790,7 +794,8 @@ public class ResourceHttpRequestHandler extends WebContentGenerator
 	 * @since 3.0.6
 	 */
 	protected boolean isInvalidPath(String path) {
-		if (path.contains("WEB-INF") || path.contains("META-INF")) {
+		String pathLowerCase = path.toLowerCase(Locale.ROOT);
+		if (pathLowerCase.contains("web-inf") || pathLowerCase.contains("meta-inf")) {
 			if (logger.isWarnEnabled()) {
 				logger.warn(LogFormatUtils.formatValue(
 						"Path with \"WEB-INF\" or \"META-INF\": [" + path + "]", -1, true));

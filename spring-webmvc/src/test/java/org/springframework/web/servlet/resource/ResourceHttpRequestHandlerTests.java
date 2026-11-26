@@ -656,6 +656,16 @@ class ResourceHttpRequestHandlerTests {
 			testInvalidPath("/../.." + secretPath);
 			testInvalidPath("/%2E%2E/testsecret/secret.txt");
 			testInvalidPath("/%2E%2E/testsecret/secret.txt");
+
+			// protected directories in any letter case
+			testInvalidPath("WEB-INF/web.xml");
+			testInvalidPath("/web-inf/web.xml");
+			testInvalidPath("Web-Inf/web.xml");
+			testInvalidPath("/META-INF/MANIFEST.MF");
+			testInvalidPath("meta-inf/manifest.mf");
+			testInvalidPath("/Meta-Inf/MANIFEST.MF");
+			testInvalidPath("/%77eb-inf/web.xml");
+			testInvalidPath("%6Deta-inf/manifest.mf");
 		}
 
 		private void testInvalidPath(String requestPath) {

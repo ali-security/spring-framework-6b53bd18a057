@@ -16,6 +16,8 @@
 
 package org.springframework.web.reactive.resource;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
@@ -23,9 +25,13 @@ import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import reactor.core.publisher.Mono;
 
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.testfixture.http.server.reactive.MockServerHttpRequest;
@@ -167,6 +173,110 @@ class VersionResourceResolverTests {
 		verify(this.versionStrategy, times(1)).getResourceVersion(expected);
 		assertThat(actual).isInstanceOf(HttpResource.class);
 		assertThat(((HttpResource) actual).getResponseHeaders().getETag()).isEqualTo(("W/\"" + version + "\""));
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {
+			"../bar.css",
+			"/../bar.css",
+			"..%2Fbar.css",
+			"%2E%2E/bar.css",
+			"%252E%252E/bar.css",
+			"WEB-INF/web.xml",
+			"/web-inf/web.xml",
+			"Web-Inf/web.xml",
+			"%77eb-inf/web.xml",
+			"META-INF/MANIFEST.MF",
+			"/meta-inf/manifest.mf",
+			"Meta-Inf/manifest.mf",
+			"url:/foo.css",
+			"file:/foo.css",
+			""
+	})
+	void resolveResourceIgnoresInvalidPathAfterVersionRemoved(String invalidPath) {
+		String versionFile = "bar-version.css";
+		String version = "version";
+		Resource expected = new ClassPathResource("test/bar.css", getClass());
+		given(this.chain.resolveResource(null, versionFile, this.locations)).willReturn(Mono.empty());
+		given(this.chain.resolveResource(null, invalidPath, this.locations)).willReturn(Mono.just(expected));
+		given(this.versionStrategy.extractVersion(versionFile)).willReturn(version);
+		given(this.versionStrategy.removeVersion(versionFile, version)).willReturn(invalidPath);
+		given(this.versionStrategy.getResourceVersion(expected)).willReturn(Mono.just(version));
+
+		this.resolver.setStrategyMap(Collections.singletonMap("/**", this.versionStrategy));
+		Resource actual = this.resolver
+				.resolveResourceInternal(null, versionFile, this.locations, this.chain)
+				.block(Duration.ofMillis(5000));
+
+		assertThat(actual).isNull();
+		verify(this.chain, never()).resolveResource(null, invalidPath, this.locations);
+	}
+
+	@Test
+	void resolveResourceIgnoresTraversalCreatedByVersionRemoval() {
+		ContentVersionStrategy strategy = new ContentVersionStrategy();
+		Resource secret = new ClassPathResource("testsecret/secret.txt", getClass());
+		String hash = strategy.getResourceVersion(secret).block(Duration.ofMillis(5000));
+		// Removing "-<hash>" joins "." and "./secret" into "../secret"
+		String requestPath = ".-" + hash + "./secret";
+		assertThat(strategy.removeVersion(requestPath, strategy.extractVersion(requestPath))).isEqualTo("../secret");
+		given(this.chain.resolveResource(null, requestPath, this.locations)).willReturn(Mono.empty());
+		given(this.chain.resolveResource(null, "../secret", this.locations)).willReturn(Mono.just(secret));
+
+		this.resolver.setStrategyMap(Collections.singletonMap("/**", strategy));
+		Resource actual = this.resolver
+				.resolveResourceInternal(null, requestPath, this.locations, this.chain)
+				.block(Duration.ofMillis(5000));
+
+		assertThat(actual).isNull();
+		verify(this.chain, never()).resolveResource(null, "../secret", this.locations);
+	}
+
+	@Test
+	void resolveResourceWithRepeatedVersion() {
+		ContentVersionStrategy strategy = new ContentVersionStrategy();
+		String hash = strategy.getResourceVersion(new ClassPathResource("test/bar.css", getClass()))
+				.block(Duration.ofMillis(5000));
+		this.resolver.setStrategyMap(Collections.singletonMap("/**", strategy));
+		ResourceResolverChain resolverChain =
+				new DefaultResourceResolverChain(List.of(this.resolver, new PathResourceResolver()));
+
+		Resource actual = resolverChain.resolveResource(null, "bar-" + hash + ".css", this.locations)
+				.block(Duration.ofMillis(5000));
+		assertThat(actual).isNotNull();
+		assertThat(actual.getFilename()).isEqualTo("bar.css");
+
+		// Only the last occurrence of the version is removed, so the many
+		// request path variants below do not all resolve to the same resource
+		String versionString = "-" + hash;
+		for (int i = 2; i <= 5; i++) {
+			String requestPath = "bar" + versionString.repeat(i) + ".css";
+			actual = resolverChain.resolveResource(null, requestPath, this.locations).block(Duration.ofMillis(5000));
+			assertThat(actual).as(requestPath).isNull();
+		}
+	}
+
+	@Test
+	void resolveResourceDoesNotExposeProtectedDirectoryAfterVersionRemoved(@TempDir Path rootDir) throws Exception {
+		Path webInf = Files.createDirectories(rootDir.resolve("WEB-INF"));
+		Files.writeString(webInf.resolve("secret.txt"), "secret");
+		Path metaInf = Files.createDirectories(rootDir.resolve("META-INF"));
+		Files.writeString(metaInf.resolve("secret.txt"), "secret");
+		List<Resource> locations = List.of(new FileSystemResource(rootDir.toAbsolutePath() + "/"));
+
+		ContentVersionStrategy strategy = new ContentVersionStrategy();
+		String hash = strategy.getResourceVersion(new FileSystemResource(webInf.resolve("secret.txt")))
+				.block(Duration.ofMillis(5000));
+		this.resolver.setStrategyMap(Collections.singletonMap("/**", strategy));
+		ResourceResolverChain resolverChain =
+				new DefaultResourceResolverChain(List.of(this.resolver, new PathResourceResolver()));
+
+		for (String requestPath : List.of(
+				"WEB-" + hash + "-INF/secret-" + hash + ".txt",
+				"META-" + hash + "-INF/secret-" + hash + ".txt")) {
+			Resource actual = resolverChain.resolveResource(null, requestPath, locations).block(Duration.ofMillis(5000));
+			assertThat(actual).as(requestPath).isNull();
+		}
 	}
 
 	@Test

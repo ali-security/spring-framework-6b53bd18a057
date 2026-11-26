@@ -670,6 +670,16 @@ class ResourceWebHandlerTests {
 			testInvalidPath("/../.." + secretPath, handler);
 			testInvalidPath("/%2E%2E/testsecret/secret.txt", handler);
 			testInvalidPath("/%2E%2E/testsecret/secret.txt", handler);
+
+			// protected directories in any letter case
+			testInvalidPath("WEB-INF/web.xml", handler);
+			testInvalidPath("/web-inf/web.xml", handler);
+			testInvalidPath("Web-Inf/web.xml", handler);
+			testInvalidPath("/META-INF/MANIFEST.MF", handler);
+			testInvalidPath("meta-inf/manifest.mf", handler);
+			testInvalidPath("/Meta-Inf/MANIFEST.MF", handler);
+			testInvalidPath("/%77eb-inf/web.xml", handler);
+			testInvalidPath("%6Deta-inf/manifest.mf", handler);
 		}
 
 		private void testInvalidPath(String requestPath, ResourceWebHandler handler) {
